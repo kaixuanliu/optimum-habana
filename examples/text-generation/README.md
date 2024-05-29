@@ -265,7 +265,10 @@ QUANT_CONFIG=./quantization_config/maxabs_measure.json python ../gaudi_spawn.py 
 --use_hpu_graphs \
 --trim_logits \
 --use_kv_cache \
---reuse_cache \
+--bucket_size=128 \
+--bucket_internal \
+--use_flash_attention \
+--flash_attention_recompute \
 --bf16 \
 --batch_size 1
 ```
@@ -280,7 +283,10 @@ QUANT_CONFIG=./quantization_config/maxabs_quant.json python ../gaudi_spawn.py \
 --use_hpu_graphs \
 --trim_logits \
 --use_kv_cache \
---reuse_cache \
+--bucket_size=128 \
+--bucket_internal \
+--use_flash_attention \
+--flash_attention_recompute \
 --bf16 \
 --batch_size 1 \
 --fp8
@@ -296,8 +302,10 @@ QUANT_CONFIG=./quantization_config/maxabs_quant.json python ../gaudi_spawn.py \
 --trim_logits \
 --use_kv_cache \
 --reuse_cache \
+--use_flash_attention \
+--flash_attention_recompute \
 --bf16 \
---batch_size 277 \
+--batch_size 350 \
 --max_new_tokens 2048 \
 --max_input_tokens 2048 \
 --limit_hpu_graphs \
