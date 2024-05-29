@@ -570,11 +570,7 @@ class GaudiLlamaAttention(LlamaAttention):
                 use_recompute = True if os.getenv("QUANT_CONFIG", "") else False
                 with ht.sdp_kernel(enable_recompute=use_recompute):
                     attn_output = self.fused_scaled_dot_product_attention(
-<<<<<<< HEAD
                         query_states, key_states, value_states, attention_mask, 0.0, False, None, softmax_mode
-=======
-                        query_states, key_states, value_states, attention_mask, 0.0, False, None
->>>>>>> d638f6a54598a41042bfd120bb33c0a805ee7034
                     )
             else:
                 # first token
@@ -582,20 +578,12 @@ class GaudiLlamaAttention(LlamaAttention):
                     # causal masking on first token requires inputs to be of the same length
                     with ht.sdp_kernel(enable_recompute=flash_attention_recompute):
                         attn_output = self.fused_scaled_dot_product_attention(
-<<<<<<< HEAD
                             query_states, key_states, value_states, None, 0.0, True, None, softmax_mode
-=======
-                            query_states, key_states, value_states, None, 0.0, True, None
->>>>>>> d638f6a54598a41042bfd120bb33c0a805ee7034
                         )
                 else:
                     with ht.sdp_kernel(enable_recompute=flash_attention_recompute):
                         attn_output = self.fused_scaled_dot_product_attention(
-<<<<<<< HEAD
                             query_states, key_states, value_states, attention_mask, 0.0, False, None, softmax_mode
-=======
-                            query_states, key_states, value_states, attention_mask, 0.0, False, None
->>>>>>> d638f6a54598a41042bfd120bb33c0a805ee7034
                         )
 
         else:
