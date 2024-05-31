@@ -903,6 +903,7 @@ class GaudiGenerationMixin(GenerationMixin):
         model_kwargs["attn_softmax_bf16"] = generation_config.attn_softmax_bf16
 
         # determine whether limit_hpu_graphs needs to be used
+        model_kwargs["use_hpu_graphs"] = hpu_graphs
         model_kwargs["limit_hpu_graphs"] = generation_config.limit_hpu_graphs
 
         # prepare for allocate kv cache
@@ -1775,13 +1776,6 @@ class GaudiGenerationMixin(GenerationMixin):
                 self._pad_past_key_values(model_kwargs)
                 model_kwargs["pad_done"] = True
 
-            if model_kwargs.get("use_hpu_graphs", False) and model_kwargs.get("limit_hpu_graphs", False) \
-                and not model_kwargs.get("reuse_cache", False) and bucket_internal:
-                # Clear HPU graphs input tensors of the decode phase after the full generation while loop
-                print("CLEAR HPU GRAPH INPUTS OF DECODE PHASE")
-                self.clear_inputs()
-                # Delete past key value tensors
-                self._remove_past_key_values(model_kwargs)
             hb_profer.step()
             if hb_gen_time is not None:
                 if not time_to_first_token_done:
@@ -1790,6 +1784,13 @@ class GaudiGenerationMixin(GenerationMixin):
 
                     torch_hpu.synchronize()
                 hb_gen_time.step()
+        if model_kwargs.get("use_hpu_graphs", False) and model_kwargs.get("limit_hpu_graphs", False) \
+            and not model_kwargs.get("reuse_cache", False) and bucket_internal:
+            # Clear HPU graphs input tensors of the decode phase after the full generation while loop
+            print("CLEAR HPU GRAPH INPUTS OF DECODE PHASE")
+            self.clear_inputs()
+            # Delete past key value tensors
+            self._remove_past_key_values(model_kwargs)
 
         hb_profer.stop()
         if streamer is not None:
@@ -2197,14 +2198,6 @@ class GaudiGenerationMixin(GenerationMixin):
                 self._pad_past_key_values(model_kwargs)
                 model_kwargs["pad_done"] = True
 
-            if model_kwargs.get("use_hpu_graphs", False) and model_kwargs.get("limit_hpu_graphs", False) \
-                and not model_kwargs.get("reuse_cache", False) and bucket_internal:
-                # Clear HPU graphs input tensors of the decode phase after the full generation while loop
-                print("CLEAR HPU GRAPH INPUTS OF DECODE PHASE")
-                self.clear_inputs()
-                # Delete past key value tensors
-                self._remove_past_key_values(model_kwargs)
-
             hb_profer.step()
             if hb_gen_time is not None:
                 if not time_to_first_token_done:
@@ -2213,6 +2206,13 @@ class GaudiGenerationMixin(GenerationMixin):
 
                     torch_hpu.synchronize()
                 hb_gen_time.step()
+        if model_kwargs.get("use_hpu_graphs", False) and model_kwargs.get("limit_hpu_graphs", False) \
+            and not model_kwargs.get("reuse_cache", False) and bucket_internal:
+            # Clear HPU graphs input tensors of the decode phase after the full generation while loop
+            print("CLEAR HPU GRAPH INPUTS OF DECODE PHASE")
+            self.clear_inputs()
+            # Delete past key value tensors
+            self._remove_past_key_values(model_kwargs)
 
         hb_profer.stop()
         if streamer is not None:
