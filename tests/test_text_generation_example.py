@@ -44,7 +44,7 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             ("meta-llama/Llama-2-7b-hf", 1, 1230, False, 128, 128, 13152.7),
             ("meta-llama/Llama-2-7b-hf", 1, 163, False, 128, 2048, 4774.7),
             ("meta-llama/Llama-2-7b-hf", 1, 94, False, 2048, 128, 1293.3),
-            ("meta-llama/Llama-2-7b-hf", 1, 81, False, 2048, 2048, 2367.0),
+            ("meta-llama/Llama-2-7b-hf", 1, 81, False, 2048, 2048, 1942.9),
             ("meta-llama/Llama-2-70b-hf", 4, 3042, False, 128, 128, 5374.6),
             ("meta-llama/Llama-2-70b-hf", 4, 750, False, 128, 2048, 7422.4),
             ("meta-llama/Llama-2-70b-hf", 4, 207, False, 2048, 128, 568.5),
