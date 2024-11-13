@@ -15,7 +15,7 @@
 """PyTorch VideoLlava model."""
 
 import torch
-from transformers.models.video_llava import (
+from transformers.models.video_llava.modeling_video_llava import (
     VideoLlavaForConditionalGeneration,
     VideoLlavaCausalLMOutputWithPast
 )
