@@ -13,8 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """PyTorch VideoLlava model."""
+from typing import List, Optional, Tuple, Union
 
 import torch
+from torch import nn
 from transformers.models.video_llava.modeling_video_llava import (
     VideoLlavaForConditionalGeneration,
     VideoLlavaCausalLMOutputWithPast
