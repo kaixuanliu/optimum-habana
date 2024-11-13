@@ -15,9 +15,9 @@
 """PyTorch VideoLlava model."""
 
 import torch
-from transformers.models.paligemma.modeling_paligemma import (
-    PaliGemmaCausalLMOutputWithPast,
-    PaliGemmaForConditionalGeneration,
+from transformers.models.video_llava import (
+    VideoLlavaForConditionalGeneration,
+    VideoLlavaCausalLMOutputWithPast
 )
 from transformers.utils import logging
 
