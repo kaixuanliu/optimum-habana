@@ -24,7 +24,7 @@ from transformers.utils import logging
 
 logger = logging.get_logger(__name__)
 
-class GaudiVideoLlavaForConditionalGeneration(GaudiVideoLlavaForConditionalGeneration):
+class GaudiVideoLlavaForConditionalGeneration(VideoLlavaForConditionalGeneration):
     def forward(
         self,
         input_ids: torch.LongTensor = None,
