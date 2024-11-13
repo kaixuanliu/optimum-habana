@@ -624,7 +624,7 @@ def adapt_transformers_to_gaudi():
     )
 
     # Optimization for VideoLlava on Gaudi
-    transformers.models.video_llava.GaudiVideoLlavaForConditionalGeneration = (
+    transformers.models.video_llava.modeling_video_llava.VideoLlavaForConditionalGeneration = (
         GaudiVideoLlavaForConditionalGeneration
     )
     # Optimization for Whisper on Gaudi
