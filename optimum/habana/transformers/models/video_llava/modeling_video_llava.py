@@ -22,11 +22,49 @@ from transformers.models.video_llava.modeling_video_llava import (
     VideoLlavaCausalLMOutputWithPast
 )
 from transformers.utils import logging
+from transformers.modeling_outputs import BaseModelOutputWithPooling
 
 
 logger = logging.get_logger(__name__)
 
 class GaudiVideoLlavaForConditionalGeneration(VideoLlavaForConditionalGeneration):
+
+    def _get_vision_features(
+        self,
+        pixel_values_images: Optional[torch.FloatTensor] = None,
+        pixel_values_videos: Optional[torch.FloatTensor] = None,
+        vision_feature_layer: Optional[int] = None,
+        vision_feature_select_strategy: Optional[str] = None,
+    ) -> Union[Tuple, BaseModelOutputWithPooling]:
+        if pixel_values_images is None and pixel_values_videos is None:
+            raise ValueError("You have to specify `pixel_values_images` or `pixel_values_videos`")
+
+        # videos do not need to select features and it's always "full" (as it is done in the orig implementation)
+        if pixel_values_videos is not None:
+            batch_size_vid, num_frames, channels, height, width = pixel_values_videos.shape
+
+            pixel_values = pixel_values_videos.reshape(batch_size_vid * num_frames, channels, height, width)
+            video_outputs = self.video_tower(pixel_values, output_hidden_states=True)
+            video_outputs = video_outputs.hidden_states[vision_feature_layer].squeeze(1)
+        else:
+            video_outputs = None
+            num_frames = 0
+
+        if pixel_values_images is not None:
+            image_outputs = self.image_tower(pixel_values_images, output_hidden_states=True)
+            image_outputs = image_outputs.hidden_states[vision_feature_layer].squeeze(1)
+
+            if vision_feature_select_strategy == "default":
+                image_outputs = image_outputs[:, 1:]
+            elif vision_feature_select_strategy == "full":
+                image_outputs = image_outputs
+            else:
+                raise ValueError(f"Unexpected select feature strategy: {self.config.vision_feature_select_strategy}")
+        else:
+            image_outputs = None
+
+        return image_outputs, video_outputs, num_frames
+
     def forward(
         self,
         input_ids: torch.LongTensor = None,
@@ -44,7 +82,7 @@ class GaudiVideoLlavaForConditionalGeneration(VideoLlavaForConditionalGeneration
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
         cache_position: Optional[torch.LongTensor] = None,
-        trim_logits: bool = False,
+        num_logits_to_keep: int = 0,
         token_idx: Optional[torch.Tensor] = None,
         **kwargs,
     ) -> Union[Tuple, VideoLlavaCausalLMOutputWithPast]:
@@ -196,7 +234,7 @@ class GaudiVideoLlavaForConditionalGeneration(VideoLlavaForConditionalGeneration
             cache_position=cache_position,
             # num_logits_to_keep=num_logits_to_keep,
             token_idx=token_idx,
-            kwargs
+            # kwargs=kwargs
         )
 
         logits = outputs[0]
