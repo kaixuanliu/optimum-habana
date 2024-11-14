@@ -196,9 +196,19 @@ class GaudiVideoLlavaForConditionalGeneration(VideoLlavaForConditionalGeneration
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
             cache_position=cache_position,
-            num_logits_to_keep=num_logits_to_keep,
+            num_logits_to_keep=0,
             token_idx=token_idx,
-            kwargs=kwargs
+            trim_logits=kwargs.get("trim_logits"),
+            attn_softmax_bf16=kwargs.get("attn_softmax_bf16"),
+            reuse_cache=kwargs.get("reuse_cache"),
+            use_flash_attention=kwargs.get("use_flash_attention"),
+            flash_attention_recompute=kwargs.get("flash_attention_recompute"),
+            flash_attention_causal_mask=kwargs.get("flash_attention_causal_mask"),
+            flash_attention_fast_softmax=kwargs.get("flash_attention_fast_softmax"),
+            valid_sequence_lengths=kwargs.get("valid_sequence_lengths"),
+            cache_idx=kwargs.get("cache_idx"),
+            lazy_mode=kwargs.get("lazy_mode"),
+            num_virtual_tokens=kwargs.get("num_virtual_tokens")
         )
 
         logits = outputs[0]
