@@ -46,6 +46,7 @@ class GaudiVideoLlavaForConditionalGeneration(VideoLlavaForConditionalGeneration
         cache_position: Optional[torch.LongTensor] = None,
         trim_logits: bool = False,
         token_idx: Optional[torch.Tensor] = None,
+        **kwargs,
     ) -> Union[Tuple, VideoLlavaCausalLMOutputWithPast]:
         r"""
         
@@ -195,6 +196,7 @@ class GaudiVideoLlavaForConditionalGeneration(VideoLlavaForConditionalGeneration
             cache_position=cache_position,
             # num_logits_to_keep=num_logits_to_keep,
             token_idx=token_idx,
+            kwargs
         )
 
         logits = outputs[0]
