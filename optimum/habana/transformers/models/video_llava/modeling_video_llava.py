@@ -41,6 +41,7 @@ class GaudiVideoLlavaForConditionalGeneration(VideoLlavaForConditionalGeneration
         num_special_image_tokens = torch.sum(special_image_token_mask, dim=-1)
         # Compute the maximum embed dimension
         max_seq_len = (num_special_image_tokens.max() * (num_image_patches * num_frames - 1)) + sequence_length
+        self.feature_offset = max_seq_len - sequence_length
         batch_indices, non_image_indices = torch.where(input_ids != special_vision_token)
 
         # 2. Compute the positions where text should be written
@@ -277,7 +278,7 @@ class GaudiVideoLlavaForConditionalGeneration(VideoLlavaForConditionalGeneration
             return_dict=return_dict,
             cache_position=cache_position,
             num_logits_to_keep=0,
-            token_idx=token_idx,
+            token_idx=token_idx+self.feature_offset,
             trim_logits=kwargs.get("trim_logits"),
             attn_softmax_bf16=kwargs.get("attn_softmax_bf16"),
             reuse_cache=kwargs.get("reuse_cache"),
