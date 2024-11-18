@@ -253,6 +253,20 @@ class GaudiVideoLlavaForConditionalGeneration(VideoLlavaForConditionalGeneration
             inputs_not_expanded = (img_token_not_enough and pixel_values_images is not None) or (
                 video_token_not_enough and pixel_values_videos is not None
             )
+        model_inputs = self.language_model.prepare_inputs_for_generation(
+            input_ids,
+            past_key_values=past_key_values,
+            inputs_embeds=inputs_embeds,
+            attention_mask=attention_mask,
+            cache_position=cache_position,
+            num_logits_to_keep=num_logits_to_keep,
+            **kwargs,
+        )
+        position_ids = model_inputs["position_ids"]
+        cache_position = model_inputs["cache_positions"]
+        attention_mask = model_inputs["attention_mask"]
+        inputs_embeds = model_inputs["inputs_embeds"]
+        input_ids = model_inputs["input_ids"]
 
         if inputs_embeds is None:
             inputs_embeds = self.get_input_embeddings()(input_ids)
@@ -260,19 +274,6 @@ class GaudiVideoLlavaForConditionalGeneration(VideoLlavaForConditionalGeneration
                 pixel_values_images is not None or pixel_values_videos is not None
             )
             legacy_processing = inputs_not_expanded or pixels_present
-
-        position_ids = kwargs.get("position_ids", None)
-        if attention_mask is not None and position_ids is None:
-            # create position_ids on the fly for batch generation
-            position_ids = attention_mask.long().cumsum(-1) - 1
-            position_ids.masked_fill_(attention_mask == 0, 1)
-            if past_key_values:
-                if token_idx is not None:
-                    position_ids = torch.index_select(position_ids, 1, token_idx - 1)
-                else:
-                    position_ids = position_ids[:, -input_ids.shape[1] :]
-                # This `clone` call is needed to avoid recapturing cuda graphs with `torch.compile`'s  `mode="reduce-overhead`, as otherwise the input `position_ids` would have various stride during the decoding. Here, simply using `.contiguous()` is not sufficient as in the batch size = 1 case, `position_ids` is already contiguous but with varying stride which retriggers a capture.
-                position_ids = position_ids.clone(memory_format=torch.contiguous_format)
 
         vision_feature_layer = kwargs.get("vision_feature_layer", None)
         vision_feature_layer = (
@@ -371,29 +372,13 @@ class GaudiVideoLlavaForConditionalGeneration(VideoLlavaForConditionalGeneration
                     )
                     video_features = video_features.to(inputs_embeds.device, inputs_embeds.dtype)
                     inputs_embeds = inputs_embeds.masked_scatter(special_image_mask, video_features)
-        if inputs_embeds is not None:
-            model_inputs = {"inputs_embeds": inputs_embeds}
-        else:
-            model_inputs = {"input_ids": input_ids}
+
         model_inputs.update(
             {
                 "position_ids": position_ids,
                 "cache_position": cache_position,
-                "past_key_values": past_key_values,
-                "use_cache": kwargs.get("use_cache", False),
                 "attention_mask": attention_mask,
                 "token_idx": token_idx+self.feature_offset,
-                "trim_logits": kwargs.get("trim_logits"),
-                "attn_softmax_bf16": kwargs.get("attn_softmax_bf16"),
-                "reuse_cache": kwargs.get("reuse_cache", False),
-                "use_flash_attention": kwargs.get("use_flash_attention"),
-                "flash_attention_recompute": kwargs.get("flash_attention_recompute"),
-                "flash_attention_causal_mask": kwargs.get("flash_attention_causal_mask"),
-                "flash_attention_fast_softmax": kwargs.get("flash_attention_fast_softmax"),
-                "valid_sequence_lengths": kwargs.get("valid_sequence_lengths"),
-                "cache_idx": kwargs.get("cache_idx"),
-                "lazy_mode": kwargs.get("lazy_mode"),
-                "num_virtual_tokens": kwargs.get("num_virtual_tokens"),
             }
         )
         if legacy_processing or cache_position[0] == 0:
