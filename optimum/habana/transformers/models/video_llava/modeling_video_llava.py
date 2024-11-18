@@ -263,10 +263,10 @@ class GaudiVideoLlavaForConditionalGeneration(VideoLlavaForConditionalGeneration
             **kwargs,
         )
         position_ids = model_inputs["position_ids"]
-        cache_position = model_inputs["cache_positions"]
+        cache_position = model_inputs["cache_position"]
         attention_mask = model_inputs["attention_mask"]
-        inputs_embeds = model_inputs["inputs_embeds"]
-        input_ids = model_inputs["input_ids"]
+        inputs_embeds = model_inputs.get("inputs_embeds", None)
+        input_ids = model_inputs.get("input_ids", None)
 
         if inputs_embeds is None:
             inputs_embeds = self.get_input_embeddings()(input_ids)
@@ -379,6 +379,8 @@ class GaudiVideoLlavaForConditionalGeneration(VideoLlavaForConditionalGeneration
                 "cache_position": cache_position,
                 "attention_mask": attention_mask,
                 "token_idx": token_idx+self.feature_offset,
+                "input_ids": None,
+                "input_embeds": inputs_embeds,
             }
         )
         if legacy_processing or cache_position[0] == 0:
