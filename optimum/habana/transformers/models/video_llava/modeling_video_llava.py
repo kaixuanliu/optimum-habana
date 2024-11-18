@@ -18,16 +18,21 @@ from typing import List, Optional, Tuple, Union
 import torch
 from torch import nn
 from transformers.models.video_llava.modeling_video_llava import (
+    VideoLlavaCausalLMOutputWithPast,
+    VideoLlavaConfig,
     VideoLlavaForConditionalGeneration,
-    VideoLlavaCausalLMOutputWithPast
 )
 from transformers.utils import logging
-from transformers.modeling_outputs import BaseModelOutputWithPooling
 
 
 logger = logging.get_logger(__name__)
 
 class GaudiVideoLlavaForConditionalGeneration(VideoLlavaForConditionalGeneration):
+    def __init__(self, config: VideoLlavaConfig):
+        super().__init__(config)
+        self.feature_offset = 0
+
+
     def _merge_input_ids_with_visual_features(
         self, visual_features, inputs_embeds, input_ids, attention_mask, labels, num_frames=1
     ):
@@ -140,15 +145,90 @@ class GaudiVideoLlavaForConditionalGeneration(VideoLlavaForConditionalGeneration
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
         )
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
-        vision_feature_layer = (
-            vision_feature_layer if vision_feature_layer is not None else self.config.vision_feature_layer
-        )
-        vision_feature_select_strategy = (
-            vision_feature_select_strategy
-            if vision_feature_select_strategy is not None
-            else self.config.vision_feature_select_strategy
+        outputs = self.language_model(
+            attention_mask=attention_mask,
+            position_ids=position_ids,
+            past_key_values=past_key_values,
+            inputs_embeds=inputs_embeds,
+            use_cache=use_cache,
+            output_attentions=output_attentions,
+            output_hidden_states=output_hidden_states,
+            return_dict=return_dict,
+            cache_position=cache_position,
+            num_logits_to_keep=0,
+            token_idx=token_idx,
+            trim_logits=kwargs.get("trim_logits"),
+            attn_softmax_bf16=kwargs.get("attn_softmax_bf16"),
+            reuse_cache=kwargs.get("reuse_cache"),
+            use_flash_attention=kwargs.get("use_flash_attention"),
+            flash_attention_recompute=kwargs.get("flash_attention_recompute"),
+            flash_attention_causal_mask=kwargs.get("flash_attention_causal_mask"),
+            flash_attention_fast_softmax=kwargs.get("flash_attention_fast_softmax"),
+            valid_sequence_lengths=kwargs.get("valid_sequence_lengths"),
+            cache_idx=kwargs.get("cache_idx"),
+            lazy_mode=kwargs.get("lazy_mode"),
+            num_virtual_tokens=kwargs.get("num_virtual_tokens")
         )
 
+        logits = outputs[0]
+
+        loss = None
+        if labels is not None:
+            # Shift so that tokens < n predict n
+            if attention_mask is not None:
+                shift_attention_mask = attention_mask[..., 1:]
+                shift_logits = logits[..., :-1, :][shift_attention_mask.to(logits.device) != 0].contiguous()
+                shift_labels = labels[..., 1:][shift_attention_mask.to(labels.device) != 0].contiguous()
+            else:
+                shift_logits = logits[..., :-1, :].contiguous()
+                shift_labels = labels[..., 1:].contiguous()
+            # Flatten the tokens
+            loss_fct = nn.CrossEntropyLoss()
+            loss = loss_fct(
+                shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1).to(shift_logits.device)
+            )
+
+        if not return_dict:
+            output = (logits,) + outputs[1:]
+            return (loss,) + output if loss is not None else output
+
+        return VideoLlavaCausalLMOutputWithPast(
+            loss=loss,
+            logits=logits,
+            past_key_values=outputs.past_key_values,
+            hidden_states=outputs.hidden_states,
+            attentions=outputs.attentions,
+            image_hidden_states=kwargs.get("image_features", None) if pixel_values_images is not None else None,
+            video_hidden_states=kwargs.get("video_features", None) if pixel_values_videos is not None else None,
+        )
+
+    def prepare_inputs_for_generation(
+        self,
+        input_ids,
+        past_key_values=None,
+        inputs_embeds=None,
+        pixel_values_images=None,
+        pixel_values_videos=None,
+        attention_mask=None,
+        cache_position=None,
+        num_logits_to_keep=None,
+        **kwargs,
+    ):
+        token_idx = kwargs.get("token_idx", None)
+        if token_idx is None:
+            return super().prepare_inputs_for_generation(
+                input_ids=input_ids,
+                past_key_values=past_key_values,
+                inputs_embeds=inputs_embeds,
+                pixel_values_images=pixel_values_images,
+                pixel_values_videos=pixel_values_videos,
+                attention_mask=attention_mask,
+                cache_position=cache_position,
+                num_logits_to_keep=num_logits_to_keep,
+                **kwargs,
+            )
+        # Else, we need to update token_idx when merging features from videos/images with input embeddings
+        labels = kwargs.get("labels", None)
         if (input_ids is None) ^ (inputs_embeds is not None):
             raise ValueError(
                 "You cannot specify both input_ids and inputs_embeds at the same time, and must specify either one"
@@ -160,25 +240,50 @@ class GaudiVideoLlavaForConditionalGeneration(VideoLlavaForConditionalGeneration
             )
 
         legacy_processing = False
-        if inputs_embeds is None:
-            inputs_embeds = self.get_input_embeddings()(input_ids)
-
-            # if the number of image/video tokens is more than image embeddings seq length, then prob we expanded it in processing
-            # not very reliable, but we don't expect one to actually pass 500+ images for one prompt
+        inputs_not_expanded = False
+        if input_ids is not None:
             img_token_not_enough = (input_ids == self.config.image_token_index).sum(
                 1
             ).max() < self.config.image_seq_length
             video_token_not_enough = (input_ids == self.config.video_token_index).sum(
                 1
             ).max() < self.config.video_seq_length
+            # if the number of image/video tokens is more than image embeddings seq length, then prob we expanded it in processing
+            # not very reliable, but we don't expect one to actually pass 500+ images for one prompt
             inputs_not_expanded = (img_token_not_enough and pixel_values_images is not None) or (
                 video_token_not_enough and pixel_values_videos is not None
             )
+
+        if inputs_embeds is None:
+            inputs_embeds = self.get_input_embeddings()(input_ids)
             pixels_present = input_ids.shape[-1] == 1 and (
                 pixel_values_images is not None or pixel_values_videos is not None
             )
             legacy_processing = inputs_not_expanded or pixels_present
 
+        position_ids = kwargs.get("position_ids", None)
+        if attention_mask is not None and position_ids is None:
+            # create position_ids on the fly for batch generation
+            position_ids = attention_mask.long().cumsum(-1) - 1
+            position_ids.masked_fill_(attention_mask == 0, 1)
+            if past_key_values:
+                if token_idx is not None:
+                    position_ids = torch.index_select(position_ids, 1, token_idx - 1)
+                else:
+                    position_ids = position_ids[:, -input_ids.shape[1] :]
+                # This `clone` call is needed to avoid recapturing cuda graphs with `torch.compile`'s  `mode="reduce-overhead`, as otherwise the input `position_ids` would have various stride during the decoding. Here, simply using `.contiguous()` is not sufficient as in the batch size = 1 case, `position_ids` is already contiguous but with varying stride which retriggers a capture.
+                position_ids = position_ids.clone(memory_format=torch.contiguous_format)
+
+        vision_feature_layer = kwargs.get("vision_feature_layer", None)
+        vision_feature_layer = (
+            vision_feature_layer if vision_feature_layer is not None else self.config.vision_feature_layer
+        )
+        vision_feature_select_strategy = kwargs.get("vision_feature_select_strategy", None)
+        vision_feature_select_strategy = (
+            vision_feature_select_strategy
+            if vision_feature_select_strategy is not None
+            else self.config.vision_feature_select_strategy
+        )
         if pixel_values_images is not None or pixel_values_videos is not None:
             image_outputs, video_outputs, num_frames = self._get_vision_features(
                 pixel_values_images=pixel_values_images,
@@ -266,101 +371,36 @@ class GaudiVideoLlavaForConditionalGeneration(VideoLlavaForConditionalGeneration
                     )
                     video_features = video_features.to(inputs_embeds.device, inputs_embeds.dtype)
                     inputs_embeds = inputs_embeds.masked_scatter(special_image_mask, video_features)
-
-        outputs = self.language_model(
-            attention_mask=attention_mask,
-            position_ids=position_ids,
-            past_key_values=past_key_values,
-            inputs_embeds=inputs_embeds,
-            use_cache=use_cache,
-            output_attentions=output_attentions,
-            output_hidden_states=output_hidden_states,
-            return_dict=return_dict,
-            cache_position=cache_position,
-            num_logits_to_keep=0,
-            token_idx=token_idx+self.feature_offset,
-            trim_logits=kwargs.get("trim_logits"),
-            attn_softmax_bf16=kwargs.get("attn_softmax_bf16"),
-            reuse_cache=kwargs.get("reuse_cache"),
-            use_flash_attention=kwargs.get("use_flash_attention"),
-            flash_attention_recompute=kwargs.get("flash_attention_recompute"),
-            flash_attention_causal_mask=kwargs.get("flash_attention_causal_mask"),
-            flash_attention_fast_softmax=kwargs.get("flash_attention_fast_softmax"),
-            valid_sequence_lengths=kwargs.get("valid_sequence_lengths"),
-            cache_idx=kwargs.get("cache_idx"),
-            lazy_mode=kwargs.get("lazy_mode"),
-            num_virtual_tokens=kwargs.get("num_virtual_tokens")
+        if inputs_embeds is not None and past_key_values is None:
+            model_inputs = {"inputs_embeds": inputs_embeds}
+        else:
+            model_inputs = {"input_ids": input_ids}
+        model_inputs.update(
+            {
+                "position_ids": position_ids,
+                "cache_position": cache_position,
+                "past_key_values": past_key_values,
+                "use_cache": kwargs.get("use_cache", False),
+                "attention_mask": attention_mask,
+                "token_idx": token_idx+self.feature_offset,
+                "trim_logits": kwargs.get("trim_logits"),
+                "attn_softmax_bf16": kwargs.get("attn_softmax_bf16"),
+                "reuse_cache": kwargs.get("reuse_cache", False),
+                "use_flash_attention": kwargs.get("use_flash_attention"),
+                "flash_attention_recompute": kwargs.get("flash_attention_recompute"),
+                "flash_attention_causal_mask": kwargs.get("flash_attention_causal_mask"),
+                "flash_attention_fast_softmax": kwargs.get("flash_attention_fast_softmax"),
+                "valid_sequence_lengths": kwargs.get("valid_sequence_lengths"),
+                "cache_idx": kwargs.get("cache_idx"),
+                "lazy_mode": kwargs.get("lazy_mode"),
+                "num_virtual_tokens": kwargs.get("num_virtual_tokens"),
+            }
         )
-
-        logits = outputs[0]
-
-        loss = None
-        if labels is not None:
-            # Shift so that tokens < n predict n
-            if attention_mask is not None:
-                shift_attention_mask = attention_mask[..., 1:]
-                shift_logits = logits[..., :-1, :][shift_attention_mask.to(logits.device) != 0].contiguous()
-                shift_labels = labels[..., 1:][shift_attention_mask.to(labels.device) != 0].contiguous()
-            else:
-                shift_logits = logits[..., :-1, :].contiguous()
-                shift_labels = labels[..., 1:].contiguous()
-            # Flatten the tokens
-            loss_fct = nn.CrossEntropyLoss()
-            loss = loss_fct(
-                shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1).to(shift_logits.device)
-            )
-
-        if not return_dict:
-            output = (logits,) + outputs[1:]
-            return (loss,) + output if loss is not None else output
-
-        return VideoLlavaCausalLMOutputWithPast(
-            loss=loss,
-            logits=logits,
-            past_key_values=outputs.past_key_values,
-            hidden_states=outputs.hidden_states,
-            attentions=outputs.attentions,
-            image_hidden_states=image_features if pixel_values_images is not None else None,
-            video_hidden_states=video_features if pixel_values_videos is not None else None,
-        )
-
-    def prepare_inputs_for_generation(
-        self,
-        input_ids,
-        past_key_values=None,
-        inputs_embeds=None,
-        pixel_values_images=None,
-        pixel_values_videos=None,
-        attention_mask=None,
-        cache_position=None,
-        num_logits_to_keep=None,
-        **kwargs,
-    ):
-        if input_ids is not None:
-            img_token_not_enough = (input_ids == self.config.image_token_index).sum(
-                1
-            ).max() < self.config.image_seq_length
-            video_token_not_enough = (input_ids == self.config.video_token_index).sum(
-                1
-            ).max() < self.config.video_seq_length
-            legacy_processing = (img_token_not_enough and pixel_values_images is not None) or (
-                video_token_not_enough and pixel_values_videos is not None
-            )
-
-        model_inputs = self.language_model.prepare_inputs_for_generation(
-            input_ids,
-            past_key_values=past_key_values,
-            inputs_embeds=inputs_embeds,
-            attention_mask=attention_mask,
-            cache_position=cache_position,
-            num_logits_to_keep=num_logits_to_keep,
-            **kwargs,
-        )
-
         if legacy_processing or cache_position[0] == 0:
             # If we're in cached decoding stage, pixel values should be None because input ids do not contain special image token anymore
             # Otherwise we need pixel values to be passed to model
             model_inputs["pixel_values_images"] = pixel_values_images
             model_inputs["pixel_values_videos"] = pixel_values_videos
-
+            model_inputs["image_features"] = image_features
+            model_inputs["video_features"] = video_features
         return model_inputs
