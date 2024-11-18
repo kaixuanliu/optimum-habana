@@ -28,6 +28,86 @@ from transformers.modeling_outputs import BaseModelOutputWithPooling
 logger = logging.get_logger(__name__)
 
 class GaudiVideoLlavaForConditionalGeneration(VideoLlavaForConditionalGeneration):
+    def _merge_input_ids_with_visual_features(
+        self, visual_features, inputs_embeds, input_ids, attention_mask, labels, num_frames=1
+    ):
+        num_images, num_image_patches, embed_dim = visual_features.shape
+        batch_size, sequence_length = input_ids.shape
+        left_padding = not torch.sum(input_ids[:, -1] == torch.tensor(self.pad_token_id))
+        special_vision_token = self.config.video_token_index if num_frames > 1 else self.config.image_token_index
+
+        # 1. Create a mask to know where special image tokens are
+        special_image_token_mask = input_ids == special_vision_token
+        num_special_image_tokens = torch.sum(special_image_token_mask, dim=-1)
+        # Compute the maximum embed dimension
+        max_seq_len = (num_special_image_tokens.max() * (num_image_patches * num_frames - 1)) + sequence_length
+        batch_indices, non_image_indices = torch.where(input_ids != special_vision_token)
+
+        # 2. Compute the positions where text should be written
+        # Calculate new positions for text tokens in merged image-text sequence.
+        # `special_image_token_mask` identifies image tokens. Each image token will be replaced by `nb_text_tokens_per_images - 1` text tokens.
+        # `torch.cumsum` computes how each image token shifts subsequent text token positions.
+        # - 1 to adjust for zero-based indexing, as `cumsum` inherently increases indices by one.
+        new_token_positions = (
+            torch.cumsum((special_image_token_mask * (num_image_patches * num_frames - 1) + 1), dim=-1) - 1
+        )
+        nb_image_pad = max_seq_len - 1 - new_token_positions[:, -1]
+        if left_padding:
+            new_token_positions += nb_image_pad[:, None]  # offset for left padding
+        text_to_overwrite = new_token_positions[batch_indices, non_image_indices]
+
+        # 3. Create the full embedding, already padded to the maximum position
+        # expand input ids so that the second "merge" with videos does not fail
+        final_embedding = torch.zeros(
+            batch_size, max_seq_len, embed_dim, dtype=inputs_embeds.dtype, device=inputs_embeds.device
+        )
+        final_attention_mask = torch.zeros(
+            batch_size, max_seq_len, dtype=attention_mask.dtype, device=inputs_embeds.device
+        )
+        final_input_ids = torch.full(
+            (batch_size, max_seq_len), self.pad_token_id, dtype=input_ids.dtype, device=inputs_embeds.device
+        )
+        # In case the Vision model or the Language model has been offloaded to CPU, we need to manually
+        # set the corresponding tensors into their correct target device.
+        target_device = inputs_embeds.device
+        batch_indices, non_image_indices, text_to_overwrite = (
+            batch_indices.to(target_device),
+            non_image_indices.to(target_device),
+            text_to_overwrite.to(target_device),
+        )
+        attention_mask = attention_mask.to(target_device)
+
+        # 4. Fill the embeddings based on the mask. If we have ["hey" "<image>", "how", "are"]
+        # we need to index copy on [0, 577, 578, 579] for the text and [1:576] for the image features
+        final_embedding[batch_indices, text_to_overwrite] = inputs_embeds[batch_indices, non_image_indices]
+        final_attention_mask[batch_indices, text_to_overwrite] = attention_mask[batch_indices, non_image_indices]
+        final_input_ids[batch_indices, text_to_overwrite] = input_ids[batch_indices, non_image_indices]
+        if labels is not None:
+            final_labels = torch.full(
+                (batch_size, max_seq_len), self.config.ignore_index, dtype=input_ids.dtype, device=input_ids.device
+            )
+            final_labels[batch_indices, text_to_overwrite] = labels[batch_indices, non_image_indices]
+        else:
+            final_labels = None
+
+        # 5. Fill the embeddings corresponding to the images. Anything that is still zeros needs filling
+        image_to_overwrite = torch.full((batch_size, max_seq_len), True, dtype=torch.bool, device=inputs_embeds.device)
+        image_to_overwrite[batch_indices, text_to_overwrite] = False
+        image_to_overwrite &= image_to_overwrite.cumsum(-1) - 1 >= nb_image_pad[:, None].to(target_device)
+
+        if image_to_overwrite.sum() != visual_features.shape[:-1].numel():
+            visual_type = "videos" if num_frames == 8 else "images"
+            num_images //= num_frames
+            raise ValueError(
+                f"The input provided to the model are wrong. The number of {visual_type} tokens is {torch.sum(special_image_token_mask)} while"
+                f" the number of {visual_type} given to the model is {num_images}. This prevents correct indexing and breaks batch generation."
+            )
+
+        final_embedding[image_to_overwrite] = visual_features.contiguous().reshape(-1, embed_dim).to(target_device)
+        final_attention_mask |= image_to_overwrite
+        position_ids = (final_attention_mask.cumsum(-1) - 1).masked_fill_((final_attention_mask == 0), 1)
+
+        return final_embedding, final_attention_mask, final_labels, position_ids, final_input_ids
 
     def forward(
         self,
