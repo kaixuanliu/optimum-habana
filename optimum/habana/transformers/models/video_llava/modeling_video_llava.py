@@ -380,7 +380,7 @@ class GaudiVideoLlavaForConditionalGeneration(VideoLlavaForConditionalGeneration
                 "attention_mask": attention_mask,
                 "token_idx": token_idx+self.feature_offset,
                 "input_ids": None,
-                "input_embeds": inputs_embeds,
+                "inputs_embeds": inputs_embeds,
             }
         )
         if legacy_processing or cache_position[0] == 0:
