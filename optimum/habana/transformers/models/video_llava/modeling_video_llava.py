@@ -354,7 +354,7 @@ class GaudiVideoLlavaForConditionalGeneration(VideoLlavaForConditionalGeneration
                     extended_attention_mask[:, new_token_idx:]=0
                     extended_attention_mask[:, new_token_idx:new_token_idx+target_length] = attention_mask[:, token_idx-target_length:token_idx]
                     # attention_mask = torch.cat((extended_attention_mask, attention_mask[:, -target_length:]), dim=1)
-                    attention_mask = extended_attention_mask.copy()
+                    attention_mask = extended_attention_mask.clone()
                     position_ids = torch.sum(attention_mask, dim=1).unsqueeze(-1) - 1
                     cache_position = torch.arange(attention_mask.shape[1], device=attention_mask.device)[
                         -target_length:
