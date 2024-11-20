@@ -46,7 +46,7 @@ class GaudiVideoLlavaForConditionalGeneration(VideoLlavaForConditionalGeneration
         num_special_image_tokens = torch.sum(special_image_token_mask, dim=-1)
         # Compute the maximum embed dimension
         max_seq_len = (num_special_image_tokens.max() * (num_image_patches * num_frames - 1)) + sequence_length
-        self.feature_offset = max_seq_len - sequence_length
+        self.feature_offset = self.feature_offset + max_seq_len - sequence_length
         batch_indices, non_image_indices = torch.where(input_ids != special_vision_token)
 
         # 2. Compute the positions where text should be written
@@ -171,6 +171,8 @@ class GaudiVideoLlavaForConditionalGeneration(VideoLlavaForConditionalGeneration
         )
 
         logits = outputs[0]
+        if logits.shape[1] > 1:
+            logits = logits[:, self.feature_offset:, :]
 
         loss = None
         if labels is not None:
@@ -352,7 +354,7 @@ class GaudiVideoLlavaForConditionalGeneration(VideoLlavaForConditionalGeneration
                     extended_attention_mask[new_batch_index, new_non_attended_tokens] = 0
                     new_token_idx = token_idx+self.feature_offset
                     extended_attention_mask[:, new_token_idx:]=0
-                    extended_attention_mask[:, new_token_idx:new_token_idx+target_length] = attention_mask[:, token_idx-target_length:token_idx]
+                    # extended_attention_mask[:, new_token_idx-target_length:new_token_idx] = attention_mask[:, token_idx-target_length:token_idx]
                     # attention_mask = torch.cat((extended_attention_mask, attention_mask[:, -target_length:]), dim=1)
                     attention_mask = extended_attention_mask.clone()
                     position_ids = torch.sum(attention_mask, dim=1).unsqueeze(-1) - 1
