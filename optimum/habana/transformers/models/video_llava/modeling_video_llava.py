@@ -356,9 +356,7 @@ class GaudiVideoLlavaForConditionalGeneration(VideoLlavaForConditionalGeneration
                     # attention_mask = torch.cat((extended_attention_mask, attention_mask[:, -target_length:]), dim=1)
                     attention_mask = extended_attention_mask.clone()
                     position_ids = torch.sum(attention_mask, dim=1).unsqueeze(-1) - 1
-                    cache_position = torch.arange(attention_mask.shape[1], device=attention_mask.device)[
-                        -target_length:
-                    ]
+                    cache_position = new_token_idx
 
             # TODO: @raushan retain only the new behavior after v4.47
             else:
@@ -382,7 +380,6 @@ class GaudiVideoLlavaForConditionalGeneration(VideoLlavaForConditionalGeneration
                 "cache_position": cache_position,
                 "attention_mask": attention_mask,
                 "token_idx": token_idx+self.feature_offset,
-                "input_ids": None,
                 "inputs_embeds": inputs_embeds,
             }
         )
