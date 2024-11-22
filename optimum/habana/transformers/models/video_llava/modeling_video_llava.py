@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """PyTorch VideoLlava model."""
+
 from typing import List, Optional, Tuple, Union
 
 import torch
@@ -27,18 +28,25 @@ from transformers.utils import logging
 
 logger = logging.get_logger(__name__)
 
+
 class GaudiVideoLlavaForConditionalGeneration(VideoLlavaForConditionalGeneration):
     def __init__(self, config: VideoLlavaConfig):
         super().__init__(config)
         self.feature_offset = 0
 
-
     def _merge_input_ids_with_visual_features(
-        self, visual_features, inputs_embeds, input_ids, attention_mask, labels, num_frames=1
+        self, visual_features, inputs_embeds, input_ids, attention_mask, labels, token_idx, num_frames=1
     ):
+        r"""
+        Copied from VideoLlavaForConditionalGeneration._merge_input_ids_with_visual_features: https://github.com/huggingface/transformers/blob/v4.45.2/src/transformers/models/video_llava/modeling_video_llava.py
+        The only differences are:
+        - add new args token_idx
+        - add self.feature_offset param
+        """
         num_images, num_image_patches, embed_dim = visual_features.shape
         batch_size, sequence_length = input_ids.shape
-        left_padding = not torch.sum(input_ids[:, -1] == torch.tensor(self.pad_token_id))
+        last_token_idx = token_idx + self.feature_offset
+        left_padding = not torch.sum(input_ids[:, last_token_idx - 1] == torch.tensor(self.pad_token_id))
         special_vision_token = self.config.video_token_index if num_frames > 1 else self.config.image_token_index
 
         # 1. Create a mask to know where special image tokens are
@@ -137,7 +145,15 @@ class GaudiVideoLlavaForConditionalGeneration(VideoLlavaForConditionalGeneration
         **kwargs,
     ) -> Union[Tuple, VideoLlavaCausalLMOutputWithPast]:
         r"""
-        
+        Copied from VideoLlavaForConditionalGeneration.forward: https://github.com/huggingface/transformers/blob/v4.45.2/src/transformers/models/video_llava/modeling_video_llava.py
+        The only differences are:
+        - add new args token_idx
+        - add new args attn_softmax_bf16
+        - add new args reuse_cache
+        - add new args use_flash_attention
+        - add new args flash_attention_recompute
+        - add new args flash_attention_causal_mask
+        - add new args flash_attention_fast_softmax
         """
 
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
@@ -167,12 +183,12 @@ class GaudiVideoLlavaForConditionalGeneration(VideoLlavaForConditionalGeneration
             valid_sequence_lengths=kwargs.get("valid_sequence_lengths"),
             cache_idx=kwargs.get("cache_idx"),
             lazy_mode=kwargs.get("lazy_mode"),
-            num_virtual_tokens=kwargs.get("num_virtual_tokens")
+            num_virtual_tokens=kwargs.get("num_virtual_tokens"),
         )
 
         logits = outputs[0]
         if logits.shape[1] > 1:
-            logits = logits[:, self.feature_offset:, :]
+            logits = logits[:, self.feature_offset :, :]
 
         loss = None
         if labels is not None:
@@ -309,6 +325,7 @@ class GaudiVideoLlavaForConditionalGeneration(VideoLlavaForConditionalGeneration
                     "Using processors without these attributes in the config is deprecated and will throw an error in v4.47."
                 )
                 if input_ids.shape[1] != 1:
+                    self.feature_offset = 0
                     for features, frames in ((image_features, 1), (video_features, num_frames)):
                         if features is not None:
                             (
@@ -323,6 +340,7 @@ class GaudiVideoLlavaForConditionalGeneration(VideoLlavaForConditionalGeneration
                                 input_ids,
                                 attention_mask,
                                 labels,
+                                token_idx,
                                 num_frames=frames,
                             )
                     cache_position = torch.arange(attention_mask.shape[1], device=attention_mask.device)
@@ -352,10 +370,8 @@ class GaudiVideoLlavaForConditionalGeneration(VideoLlavaForConditionalGeneration
 
                     # Zero-out the places where we don't need to attend
                     extended_attention_mask[new_batch_index, new_non_attended_tokens] = 0
-                    new_token_idx = token_idx+self.feature_offset
-                    extended_attention_mask[:, new_token_idx:]=0
-                    # extended_attention_mask[:, new_token_idx-target_length:new_token_idx] = attention_mask[:, token_idx-target_length:token_idx]
-                    # attention_mask = torch.cat((extended_attention_mask, attention_mask[:, -target_length:]), dim=1)
+                    new_token_idx = token_idx + self.feature_offset
+                    extended_attention_mask[:, new_token_idx - 1 + target_length :] = 0
                     attention_mask = extended_attention_mask.clone()
                     position_ids = torch.sum(attention_mask, dim=1).unsqueeze(-1) - 1
                     cache_position = new_token_idx
@@ -381,7 +397,7 @@ class GaudiVideoLlavaForConditionalGeneration(VideoLlavaForConditionalGeneration
                 "position_ids": position_ids,
                 "cache_position": cache_position,
                 "attention_mask": attention_mask,
-                "token_idx": token_idx+self.feature_offset,
+                "token_idx": token_idx + self.feature_offset,
                 "inputs_embeds": inputs_embeds,
             }
         )
