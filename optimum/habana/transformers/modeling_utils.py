@@ -718,7 +718,7 @@ def adapt_transformers_to_gaudi():
     transformers.models.xglm.modeling_xglm.XGLMDecoderLayer.forward = gaudi_xglm_decoder_layer_forward
 
     # Optimization for XLMRoberta model on Gaudi
-    transformers.models.xlm_roberta.XLMRobertaSdpaSelfAttention = GaudiXLMRobertaSdpaSelfAttention
+    transformers.models.xlm_roberta.modeling_xlm_roberta.XLMRobertaSdpaSelfAttention = GaudiXLMRobertaSdpaSelfAttention
 
     transformers.AutoConfig.register("minicpm3", MiniCPM3Config)
     transformers.AutoModelForCausalLM.register(MiniCPM3Config, MiniCPM3ForCausalLM)
