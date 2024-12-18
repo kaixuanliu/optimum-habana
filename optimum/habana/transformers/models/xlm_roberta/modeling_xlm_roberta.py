@@ -15,43 +15,18 @@
 # limitations under the License.
 """PyTorch XLM-RoBERTa model."""
 
-import math
-from typing import List, Optional, Tuple, Union
+from typing import Optional, Tuple
 
 import torch
 import torch.utils.checkpoint
-from packaging import version
-from torch import nn
-from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
 from habana_frameworks.torch.hpex.kernels import FusedSDPA
+from packaging import version
+from transformers.models.xlm_roberta.modeling_xlm_roberta import XLMRobertaSelfAttention
 
-from ...activations import ACT2FN, gelu
-from ...generation import GenerationMixin
-from ...modeling_attn_mask_utils import (
-    _prepare_4d_attention_mask_for_sdpa,
-    _prepare_4d_causal_attention_mask_for_sdpa,
-)
-from ...modeling_outputs import (
-    BaseModelOutputWithPastAndCrossAttentions,
-    BaseModelOutputWithPoolingAndCrossAttentions,
-    CausalLMOutputWithCrossAttentions,
-    MaskedLMOutput,
-    MultipleChoiceModelOutput,
-    QuestionAnsweringModelOutput,
-    SequenceClassifierOutput,
-    TokenClassifierOutput,
-)
-from ...modeling_utils import PreTrainedModel
-from ...pytorch_utils import apply_chunking_to_forward, find_pruneable_heads_and_indices, prune_linear_layer
 from ...utils import (
-    add_code_sample_docstrings,
-    add_start_docstrings,
-    add_start_docstrings_to_model_forward,
     get_torch_version,
     logging,
-    replace_return_docstrings,
 )
-from .configuration_xlm_roberta import XLMRobertaConfig
 
 
 logger = logging.get_logger(__name__)
@@ -128,15 +103,7 @@ class GaudiXLMRobertaSdpaSelfAttention(XLMRobertaSelfAttention):
         )
 
         attn_output = FusedSDPA.apply(
-            query_layer,
-            key_layer,
-            value_layer,
-            attention_mask,
-            0.0,
-            is_causal,
-            "None",
-            "fast",
-            False
+            query_layer, key_layer, value_layer, attention_mask, 0.0, is_causal, "None", "fast", False
         )
 
         attn_output = attn_output.transpose(1, 2)
