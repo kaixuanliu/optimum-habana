@@ -154,6 +154,7 @@ from .models import (
     GaudiWhisperModel,
     GaudiWhisperSdpaAttention,
     GaudiXGLMForCausalLM,
+    GaudiXLMRobertaSdpaSelfAttention,
     LlamaConfig,
     MiniCPM3Config,
     MiniCPM3ForCausalLM,
@@ -715,6 +716,9 @@ def adapt_transformers_to_gaudi():
     transformers.models.xglm.modeling_xglm.XGLMModel.forward = gaudi_xglm_model_forward
     transformers.models.xglm.modeling_xglm.XGLMAttention.forward = gaudi_xglm_attention_forward
     transformers.models.xglm.modeling_xglm.XGLMDecoderLayer.forward = gaudi_xglm_decoder_layer_forward
+
+    # Optimization for XLMRoberta model on Gaudi
+    transformers.models.xlm_roberta.XLMRobertaSdpaSelfAttention = GaudiXLMRobertaSdpaSelfAttention
 
     transformers.AutoConfig.register("minicpm3", MiniCPM3Config)
     transformers.AutoModelForCausalLM.register(MiniCPM3Config, MiniCPM3ForCausalLM)
