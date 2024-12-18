@@ -23,10 +23,7 @@ from habana_frameworks.torch.hpex.kernels import FusedSDPA
 from packaging import version
 from transformers.models.xlm_roberta.modeling_xlm_roberta import XLMRobertaSelfAttention
 
-from ...utils import (
-    get_torch_version,
-    logging,
-)
+from optimum.utils import logging
 
 
 logger = logging.get_logger(__name__)
@@ -37,7 +34,6 @@ class GaudiXLMRobertaSdpaSelfAttention(XLMRobertaSelfAttention):
     def __init__(self, config, position_embedding_type=None):
         super().__init__(config, position_embedding_type=position_embedding_type)
         self.dropout_prob = config.attention_probs_dropout_prob
-        self.require_contiguous_qkv = version.parse(get_torch_version()) < version.parse("2.2.0")
 
     # Adapted from XLMRobertaSelfAttention
     def forward(
@@ -92,11 +88,6 @@ class GaudiXLMRobertaSdpaSelfAttention(XLMRobertaSelfAttention):
 
         if self.is_decoder:
             past_key_value = (key_layer, value_layer)
-
-        if self.require_contiguous_qkv and attention_mask is not None:
-            query_layer = query_layer.contiguous()
-            key_layer = key_layer.contiguous()
-            value_layer = value_layer.contiguous()
 
         is_causal = (
             True if self.is_decoder and not is_cross_attention and attention_mask is None and tgt_len > 1 else False
