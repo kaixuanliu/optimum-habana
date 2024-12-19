@@ -1,1 +1,1 @@
-from .modeling_xlm_roberta import GaudiXLMRobertaSdpaSelfAttention
+from .modeling_xlm_roberta import gaudi_XLMRoberta_Sdpa_SelfAttention_forward
