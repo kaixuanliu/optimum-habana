@@ -87,7 +87,7 @@ def gaudi_XLMRoberta_Sdpa_SelfAttention_forward(
     )
 
     attn_output = FusedSDPA.apply(
-        query_layer, key_layer, value_layer, attention_mask, 0.0, is_causal, "None", "fast", False
+        query_layer, key_layer, value_layer, attention_mask, 0.0, is_causal, None, "fast", False
     )
 
     attn_output = attn_output.transpose(1, 2)
