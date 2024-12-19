@@ -21,7 +21,7 @@ import torch
 import torch.utils.checkpoint
 from habana_frameworks.torch.hpex.kernels import FusedSDPA
 from packaging import version
-from transformers.models.xlm_roberta.modeling_xlm_roberta import XLMRobertaSelfAttention
+from transformers.models.xlm_roberta.modeling_xlm_roberta import XLMRobertaSdpaSelfAttention
 
 from optimum.utils import logging
 
@@ -30,12 +30,11 @@ logger = logging.get_logger(__name__)
 
 
 # Copied from transformers.models.roberta.modeling_roberta.RobertaSdpaSelfAttention with Roberta->XLMRoberta
-class GaudiXLMRobertaSdpaSelfAttention(XLMRobertaSelfAttention):
+class GaudiXLMRobertaSdpaSelfAttention(XLMRobertaSdpaSelfAttention):
     def __init__(self, config, position_embedding_type=None):
         super().__init__(config, position_embedding_type=position_embedding_type)
         self.dropout_prob = config.attention_probs_dropout_prob
 
-    # Adapted from XLMRobertaSelfAttention
     def forward(
         self,
         hidden_states: torch.Tensor,
