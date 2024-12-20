@@ -165,11 +165,7 @@ class GaudiMixtralAttentionLongSequence:
             s, e = i * q_block_size, (i + 1) * q_block_size
             row_q = q[:, :, s:e, :]
             row_mask = mask[:, :, s:e, :]
-            row_o = attn_output[:, :, s:e, :]
-            logger.info(f"======row_q shape: {row_q.shape}=========")
-            test = FusedSDPA.apply(row_q, k, v, row_mask, 0.0, causal, None)
-            logger.info(f"test:==========={test}===============")
-            row_o.fill_(test)
+            attn_output[:, :, s:e, :] = FusedSDPA.apply(row_q, k, v, row_mask, 0.0, causal, None)
 
         if q_padding != 0:
             attn_output = attn_output[:, :, :-q_padding, :]
