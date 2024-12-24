@@ -73,7 +73,7 @@ except ImportError:
     FusedSDPA = None
 
 logger = logging.get_logger(__name__)
-
+torch._C._set_math_sdp_allow_fp16_bf16_reduction(True)
 
 class ModuleFusedSDPA(torch.nn.Module):
     def __init__(self, fusedSDPA):
