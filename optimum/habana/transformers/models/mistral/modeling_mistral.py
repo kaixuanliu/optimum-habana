@@ -81,6 +81,8 @@ class ModuleFusedSDPA(torch.nn.Module):
         self._hpu_kernel_fsdpa = fusedSDPA
 
     def forward(self, query, key, value, attn_mask, dropout_p, is_casual, scale):
+        logger.info(f"Debug======using FusedSDPA=============")
+        print(f"Debug======using FusedSDPA=============")
         return self._hpu_kernel_fsdpa.apply(query, key, value, attn_mask, dropout_p, is_casual, scale)
 
 
@@ -150,6 +152,8 @@ class GaudiMistralAttention(MistralAttention):
         self.v_cache = KVCache()
         self.matmul_qk = Matmul()
         self.matmul_av = Matmul()
+        logger.info(f"Debug,=====Mistral init, use SDPA:{FusedSDPA}==========")
+        print(f"Debug,=====Mistral init, use SDPA:{FusedSDPA}==========")
         self.fused_scaled_dot_product_attention = ModuleFusedSDPA(FusedSDPA) if FusedSDPA else None
         self.inp_seq_len = -1
         self._init_rope()
