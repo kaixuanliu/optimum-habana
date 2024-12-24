@@ -304,28 +304,35 @@ class GaudiMistralAttention(MistralAttention):
         print(f"Debug==============use_flash_attention: {use_flash_attention}, use cache: {use_cache}==========")
         print(f"Debug===================reuse cache: {reuse_cache}=========================")
         if FusedSDPA and use_flash_attention:
+            print("111111111111111111111111111111111111111111111111")
             if q_len == 1:
                 # next token
+                print("222222222222222222222222222222222222222222222222")
                 use_recompute = True if os.getenv("QUANT_CONFIG", "") else False
+                print(f"Debug=============use_recompute: {use_recompute}================")
                 with ht.sdp_kernel(enable_recompute=use_recompute):
                     attn_output = self.fused_scaled_dot_product_attention(
                         query_states, key_states, value_states, attention_mask, 0.0, False, None
                     )
             else:
                 # first token
+                print("3333333333333333333333333333333333333333")
                 if flash_attention_causal_mask:
                     # causal masking on first token requires inputs to be of the same length
+                    print("444444444444444444444444444444444444444")
                     with ht.sdp_kernel(enable_recompute=flash_attention_recompute):
                         attn_output = self.fused_scaled_dot_product_attention(
                             query_states, key_states, value_states, None, 0.0, True, None
                         )
                 else:
+                    print("55555555555555555555555555555555555555555555")
                     with ht.sdp_kernel(enable_recompute=flash_attention_recompute):
                         attn_output = self.fused_scaled_dot_product_attention(
                             query_states, key_states, value_states, attention_mask, 0.0, False, None
                         )
 
         else:
+            print("6666666666666666666666666666666666666666666666666666666666666666")
             # repeat k/v heads if n_kv_heads < n_heads
             query_states, key_states, value_states, attention_mask = gaudi_mistral_repeat_kv(
                 query_states, key_states, value_states, attention_mask, self.num_key_value_groups
