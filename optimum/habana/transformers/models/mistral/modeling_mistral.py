@@ -303,7 +303,8 @@ class GaudiMistralAttention(MistralAttention):
             past_key_value = None
 
         import habana_frameworks.torch.hpu as ht
-
+        logger.info(f"Debug==============use_flash_attention: {use_flash_attention}, use cache: {use_cache}==========")
+        print(f"Debug===================reuse cache: {reuse_cache}=========================")
         if FusedSDPA and use_flash_attention:
             if q_len == 1:
                 # next token
