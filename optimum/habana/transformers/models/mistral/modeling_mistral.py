@@ -151,8 +151,9 @@ class GaudiMistralAttention(MistralAttention):
         self.v_cache = KVCache()
         self.matmul_qk = Matmul()
         self.matmul_av = Matmul()
-        print(f"Debug,=====Mistral init, use SDPA:{FusedSDPA}==========")
+        # print(f"Debug,=====Mistral init, use SDPA:{FusedSDPA}==========")
         self.fused_scaled_dot_product_attention = ModuleFusedSDPA(FusedSDPA) if FusedSDPA else None
+        print(f"Debug,=====Mistral init, fused scaled dot product:{self.fused_scaled_dot_product_attention}==========")
         self.inp_seq_len = -1
         self._init_rope()
         self.norm_factor = 1.0 / math.sqrt(self.head_dim)
@@ -301,9 +302,9 @@ class GaudiMistralAttention(MistralAttention):
             past_key_value = None
 
         import habana_frameworks.torch.hpu as ht
-        print(f"Debug==============use_flash_attention: {use_flash_attention}, use cache: {use_cache}==========")
-        print(f"Debug===================reuse cache: {reuse_cache}=========================")
-        print(f"Debug===================flash_attention_recompute: {flash_attention_recompute}================")
+        # print(f"Debug==============use_flash_attention: {use_flash_attention}, use cache: {use_cache}==========")
+        # print(f"Debug===================reuse cache: {reuse_cache}=========================")
+        # print(f"Debug===================flash_attention_recompute: {flash_attention_recompute}================")
         if FusedSDPA and use_flash_attention:
             # print("111111111111111111111111111111111111111111111111")
             if q_len == 1:
