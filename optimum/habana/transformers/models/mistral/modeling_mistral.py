@@ -75,6 +75,32 @@ except ImportError:
 logger = logging.get_logger(__name__)
 torch._C._set_math_sdp_allow_fp16_bf16_reduction(True)
 
+
+class GaudiMixtralAttentionLongSequence:
+    @staticmethod
+    def forward(q, k, v, mask, causal, q_block_size):
+        """
+        Support long sequence at prompt phase
+        """
+        q_len = q.size(-2)
+        q_tiles = (q_len // q_block_size) if (q_len % q_block_size == 0) else math.ceil(q_len / q_block_size)
+        q_padding = q_tiles * q_block_size - q_len
+        q = F.pad(q, (0, 0, 0, q_padding), "constant", 0)
+        if mask is not None:
+            mask = F.pad(mask, (0, 0, 0, q_padding), "constant", -10000.0)
+        attn_output = torch.zeros_like(q)
+
+        for i in range(q_tiles):
+            s, e = i * q_block_size, (i + 1) * q_block_size
+            row_q = q[:, :, s:e, :]
+            row_mask = mask[:, :, s:e, :]
+            attn_output[:, :, s:e, :] = FusedSDPA.apply(row_q, k, v, row_mask, 0.0, causal, None)
+
+        if q_padding != 0:
+            attn_output = attn_output[:, :, :-q_padding, :]
+
+        return attn_output
+
 class ModuleFusedSDPA(torch.nn.Module):
     def __init__(self, fusedSDPA):
         super().__init__()
@@ -157,6 +183,7 @@ class GaudiMistralAttention(MistralAttention):
         self.inp_seq_len = -1
         self._init_rope()
         self.norm_factor = 1.0 / math.sqrt(self.head_dim)
+        self.block_size = 1024
 
     def _init_rope(self):
         """
@@ -329,9 +356,21 @@ class GaudiMistralAttention(MistralAttention):
                 else:
                     # print("55555555555555555555555555555555555555555555")
                     with ht.sdp_kernel(enable_recompute=flash_attention_recompute):
-                        attn_output = self.fused_scaled_dot_product_attention(
-                            query_states, key_states, value_states, attention_mask, 0.0, False, None
-                        )
+                        if q_len > 8192:
+                            htcore.mark_step()
+                            attn_output = GaudiMixtralAttentionLongSequence.forward(
+                                query_states,
+                                key_states,
+                                value_states,
+                                attention_mask,
+                                False,
+                                self.block_size,
+                            )
+                            htcore.mark_step()
+                        else:
+                            attn_output = self.fused_scaled_dot_product_attention(
+                                query_states, key_states, value_states, attention_mask, 0.0, False, None
+                            )
 
         else:
             # print("6666666666666666666666666666666666666666666666666666666666666666")
